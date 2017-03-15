@@ -133,24 +133,150 @@ static int skx_probe(struct usb_interface *interface, const struct usb_device_id
 
   /*
     Only missing part is the goto statements and their corresponding functions
-    (xpad_deinit_input and xpad_deinit_output)
+    (skx_deinit_input and skx_deinit_output)
   */
 }
 
 /*
-  Can be combined into the xpadone_process_packet function
-  And possibly further combine the xpadone_process_buttons function into it
+  Can be combined into the skx_process_packet function
+  And possibly further combine the skx_process_buttons function into it
 */
+
+static void skx_process_packet(struct usb_skx *skx, unsigned char *data)
+{
+  input_sync(dev);
+
+  struct input_dev *dev = skx->dev;
+
+  switch (data[0]) {
+  case 0x20:
+    
+  /* menu/view buttons */
+  input_report_key(dev, BTN_START,  data[4] & 0x04);
+  input_report_key(dev, BTN_SELECT, data[4] & 0x08);
+
+  /* buttons A,B,X,Y */
+  input_report_key(dev, BTN_A,  data[4] & 0x10);
+  input_report_key(dev, BTN_B,  data[4] & 0x20);
+  input_report_key(dev, BTN_X,  data[4] & 0x40);
+  input_report_key(dev, BTN_Y,  data[4] & 0x80);
+
+  /* digital pad */
+  if (skx->mapping & MAP_DPAD_TO_BUTTONS) {
+    /* dpad as buttons (left, right, up, down) */
+    input_report_key(dev, BTN_TRIGGER_HAPPY1, data[5] & 0x04);
+    input_report_key(dev, BTN_TRIGGER_HAPPY2, data[5] & 0x08);
+    input_report_key(dev, BTN_TRIGGER_HAPPY3, data[5] & 0x01);
+    input_report_key(dev, BTN_TRIGGER_HAPPY4, data[5] & 0x02);
+  } else {
+    input_report_abs(dev, ABS_HAT0X,
+         !!(data[5] & 0x08) - !!(data[5] & 0x04));
+    input_report_abs(dev, ABS_HAT0Y,
+         !!(data[5] & 0x02) - !!(data[5] & 0x01));
+  }
+
+  /* TL/TR */
+  input_report_key(dev, BTN_TL, data[5] & 0x10);
+  input_report_key(dev, BTN_TR, data[5] & 0x20);
+
+  /* stick press left/right */
+  input_report_key(dev, BTN_THUMBL, data[5] & 0x40);
+  input_report_key(dev, BTN_THUMBR, data[5] & 0x80);
+
+  if (!(skx->mapping & MAP_STICKS_TO_NULL)) {
+    /* left stick */
+    input_report_abs(dev, ABS_X,
+         (__s16) le16_to_cpup((__le16 *)(data + 10)));
+    input_report_abs(dev, ABS_Y,
+         ~(__s16) le16_to_cpup((__le16 *)(data + 12)));
+
+    /* right stick */
+    input_report_abs(dev, ABS_RX,
+         (__s16) le16_to_cpup((__le16 *)(data + 14)));
+    input_report_abs(dev, ABS_RY,
+         ~(__s16) le16_to_cpup((__le16 *)(data + 16)));
+  }
+
+  /* triggers left/right */
+  if (skx->mapping & MAP_TRIGGERS_TO_BUTTONS) {
+    input_report_key(dev, BTN_TL2,
+         (__u16) le16_to_cpup((__le16 *)(data + 6)));
+    input_report_key(dev, BTN_TR2,
+         (__u16) le16_to_cpup((__le16 *)(data + 8)));
+  } else {
+    input_report_abs(dev, ABS_Z,
+         (__u16) le16_to_cpup((__le16 *)(data + 6)));
+    input_report_abs(dev, ABS_RZ,
+         (__u16) le16_to_cpup((__le16 *)(data + 8)));
+  }
+    break;
+
+  case 0x07:
+    /*
+     * The Xbox One S controller requires these reports to be
+     * acked otherwise it continues sending them forever and
+     * won't report further mode button events.
+     */
+    if (data[1] == 0x30)
+      unsigned long flags;
+      struct skx_output_packet *packet =
+          &skx->out_packets[skx_OUT_CMD_IDX];
+      static const u8 mode_report_ack[] = {
+        0x01, 0x20, 0x00, 0x09, 0x00, 0x07, 0x20, 0x02,
+        0x00, 0x00, 0x00, 0x00, 0x00
+      };
+
+      spin_lock_irqsave(&skx->odata_lock, flags);
+
+      packet->len = sizeof(mode_report_ack);
+      memcpy(packet->data, mode_report_ack, packet->len);
+      packet->data[2] = data[2];
+      packet->pending = true;
+
+      /* Reset the sequence so we send out the ack now */
+      skx->last_out_packet = -1;
+      skx_try_sending_next_out_packet(skx);
+
+      spin_unlock_irqrestore(&skx->odata_lock, flags);
+
+    /* the xbox button has its own special report */
+    input_report_key(dev, BTN_MODE, data[4] & 0x01);
+    input_sync(dev);
+    break;
+  }
+}
+
 static void skx_interrupt_in(struct urb *urb)
 {
-  return;
+  struct usb_skx *skx = urb->context;
+  struct device *dev = &skx->intf->dev;
+  int retval, status;
+
+  status = urb->status;
+
+  switch (status) {
+  case 0:
+    /* success */
+    break;
+  case -ECONNRESET:
+  case -ENOENT:
+  case -ESHUTDOWN:
+    return status
+  }
+
+  skx_process_packet(skx, 0, skx->idata);
+
+  retval = usb_submit_urb(urb, GFP_ATOMIC);
+  if (retval)
+    dev_err(dev, "%s - usb_submit_urb failed with result %d\n",__func__, retval);
 }
+
 static void skx_disconnect(struct usb_interface *interface)
 {
   return;
 }
 /*
-  Need to traverse the xpad_init_output in order to gleam what functions are
+  Need to traverse the skx_init_output in order to gleam what functions are
   required for output (and what packets)
 */
 static int skx_init_output(struct usb_interface *interface, struct usb_skx *skx)
@@ -170,8 +296,8 @@ static int skx_init_input(struct usb_skx *skx)
 static int skx_start_input(struct usb_skx *skx)
 {
   /*
-    Should combine xpad_start_xbox_one and
-    xpadone_send_init_pkt functions here
+    Should combine skx_start_xbox_one and
+    skx_send_init_pkt functions here
   */
   return 0;
 }
