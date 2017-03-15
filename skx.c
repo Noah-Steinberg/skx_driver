@@ -60,7 +60,7 @@ static int skx_probe(struct usb_interface *interface, const struct usb_device_id
   struct usb_device *usb_dev = interface_to_usbdev(interface);
   struct usb_endpoint_descriptor *interrupt_in;
   struct usb_skx *skx;
-  int interrupt_in_index, i, err;
+  int i, err;
 
   if(interface->cur_altsetting->desc.bNumEndpoints != 2)
   {
@@ -98,14 +98,82 @@ static int skx_probe(struct usb_interface *interface, const struct usb_device_id
     //Should free memory first!
     return -ENODEV;
   }
+
+  error = skx_init_output(interface, skx);
+  if(error)
+  {
+    //Should free memory first!
+    return -ENOMEM;
+  }
+
+  interrupt_in = &interface->cur_altsetting->endpoint[1].desc;
+
+  usb_fill_int_urb(skx->interrupt_in, usb_dev,
+    usb_rcvintpipe(usb_dev, interrupt_in->bEndpointAddress),
+    skx->input_data, PKT_LEN, skx_interrupt_in,
+    skx, interrupt_in);
+
+  usb_set_intfdata(interface, skx);
+
   /*
-    TODO: Add init functions for the proble (starting from line 1590 of xpad.c)
+    can the next two functions be combined?
+  */
+  error = skx_init_input(skx);
+  if(error)
+  {
+    //Should free memory first!
+    return -ENOMEM;
+  }
+  error = skx_start_input(skx);
+  if(error)
+  {
+    //Should free memory first!
+    return -ENOMEM;
+  }
+
+  /*
+    Only missing part is the goto statements and their corresponding functions
+    (xpad_deinit_input and xpad_deinit_output)
   */
 }
 
+/*
+  Can be combined into the xpadone_process_packet function
+  And possibly further combine the xpadone_process_buttons function into it
+*/
+static void skx_interrupt_in(struct urb *urb)
+{
+  return;
+}
 static void skx_disconnect(struct usb_interface *interface)
 {
   return;
+}
+/*
+  Need to traverse the xpad_init_output in order to gleam what functions are
+  required for output (and what packets)
+*/
+static int skx_init_output(struct usb_interface *interface, struct usb_skx *skx)
+{
+  return 0;
+}
+
+static int skx_init_input(struct usb_skx *skx)
+{
+  /*
+  cannot be combined with skx_start_input, as this is used to check for
+  controller presence as well
+  */
+  return 0;
+}
+
+static int skx_start_input(struct usb_skx *skx)
+{
+  /*
+    Should combine xpad_start_xbox_one and
+    xpadone_send_init_pkt functions here
+  */
+  return 0;
 }
 
 static struct usb_driver skx_driver = {
