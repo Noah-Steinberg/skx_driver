@@ -12,6 +12,7 @@ MODULE_DESCRIPTION("A dedicated Xbox One S Controller driver");
 MODULE_LICENSE("GPL");
 
 #define PKT_LEN 64
+#define MAX_OUT_PACKETS 2
 #define DEV_NAME "Microsoft X-Box One S pad"
 #define SKX_PROTOCOL() \
   .match_flags = USB_DEVICE_ID_MATCH_VENDOR | USB_DEVICE_ID_MATCH_INT_INFO, \
@@ -49,7 +50,7 @@ struct usb_skx {
   dma_addr_t odata_dma;
   spinlock_t odata_lock;
 
-  struct output_packet out_packets[2];
+  struct output_packet out_packets[MAX_OUT_PACKETS];
   int last_out_packet;
 
   char phys_path[64];
@@ -173,7 +174,7 @@ static void skx_interrupt_in(struct urb *urb)
         if(data[1]==0x30){
           unsigned long flags;
           struct output_packet *packet =
-              &skx->out_packets[XPAD_OUT_CMD_IDX];
+              &skx->out_packets[0];
           static const u8 mode_report_ack[] = {
             0x01, 0x20, 0x00, 0x09, 0x00, 0x07, 0x20, 0x02,
             0x00, 0x00, 0x00, 0x00, 0x00
@@ -240,10 +241,59 @@ static void skx_interrupt_in(struct urb *urb)
 
 
 exit:
-  retval = usb_submit_urb(urb, GFP_ATOMIC);
-  if (retval)
-    dev_err(dev, "%s - usb_submit_urb failed with result %d\n",
-      __func__, retval);
+  ret = usb_submit_urb(urb, GFP_ATOMIC);
+  if (ret){
+    dev_err(dev, "SKX: usb_submit_urb failed: %d\n", retval);
+  }
+}
+
+static int skx_send_packet(struct usb_skx *skx)
+{
+  int err;
+
+  if (!skx->interrupt_out_active && skx_prepare_packet(skx)) {
+    usb_anchor_urb(skx->interrupt_out, &skx->interrupt_out_anchor);
+    err = usb_submit_urb(skx->interrupt_out, GFP_ATOMIC);
+    if (err) {
+      dev_err(&skx->interface->dev,
+        "SKX: usb_submit_urb failed:%d\n", err);
+      usb_unanchor_urb(skx->interrupt_out);
+      return -EIO;
+    }
+
+    skx->interrupt_out_active = true;
+  }
+
+  return 0;
+}
+
+static bool skx_prepare_packet(struct usb_skx *skx)
+{
+  struct output_packet *pkt, *packet = NULL;
+  int i;
+
+  for (i = 0; i < MAX_OUT_PACKETS; i++) {
+    if (++skx->last >= MAX_OUT_PACKETS)
+      skx->last_out_packet = 0;
+
+    pkt = &skx->out_packets[skx->last_out_packet];
+    if (pkt->pending) {
+      dev_dbg(&skx->interface->dev,
+        "%sSKX: found pending output: %d\n",
+        __func__, skx->last_out_packet);
+      packet = pkt;
+      break;
+    }
+  }
+
+  if (packet) {
+    memcpy(skx->odata, packet->data, packet->len);
+    skx->interrupt_out->transfer_buffer_length = packet->len;
+    packet->pending = false;
+    return true;
+  }
+
+  return false;
 }
 
 static void skx_disconnect(struct usb_interface *interface)
