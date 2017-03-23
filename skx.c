@@ -156,16 +156,15 @@ static void skx_interrupt_in(struct urb *urb)
   case -ENOENT:
   case -ESHUTDOWN:
     /* this urb is terminated, clean up */
-    dev_dbg(d, "SKX:urb error occured err: %d\n",  status);
+    dev_dbg(d, "SKX:urb error: %d\n",  status);
     return;
   default:
-    dev_dbg(d, "%s - nonzero urb status received: %d\n",
-      __func__, status);
+    dev_dbg(d, "SKX:unknown urb status: %d\n", status);
     goto exit;
   }
 
   //Print this if we need to make sure something works
-  //print_hex_dump(KERN_DEBUG, "xpad-dbg: ", DUMP_PREFIX_OFFSET, 32, 1, xpad->idata, XPAD_PKT_LEN, 0);
+  //print_hex_dump(KERN_DEBUG, "SKX: ", DUMP_PREFIX_OFFSET, 32, 1, xpad->idata, XPAD_PKT_LEN, 0);
    
     struct input_dev *dev = skx->dev;
 
@@ -174,13 +173,13 @@ static void skx_interrupt_in(struct urb *urb)
         if(data[1]==0x30){
           unsigned long flags;
           struct output_packet *packet =
-              &xpad->out_packets[XPAD_OUT_CMD_IDX];
+              &skx->out_packets[XPAD_OUT_CMD_IDX];
           static const u8 mode_report_ack[] = {
             0x01, 0x20, 0x00, 0x09, 0x00, 0x07, 0x20, 0x02,
             0x00, 0x00, 0x00, 0x00, 0x00
           };
 
-          spin_lock_irqsave(&xpad->odata_lock, flags);
+          spin_lock_irqsave(&skx->odata_lock, flags);
 
           packet->len = sizeof(mode_report_ack);
           memcpy(packet->data, mode_report_ack, packet->len);
@@ -188,10 +187,10 @@ static void skx_interrupt_in(struct urb *urb)
           packet->pending = true;
 
           /* Reset the sequence so we send out the ack now */
-          xpad->last_out_packet = -1;
-          xpad_try_sending_next_out_packet(xpad);
+          skx->last_out_packet = -1;
+          skx_send_packet(skx);
 
-          spin_unlock_irqrestore(&xpad->odata_lock, flags);
+          spin_unlock_irqrestore(&skx->odata_lock, flags);
         }
         input_report_key(dev, BTN_MODE, data[4] & 0x01);
         input_sync(dev);
