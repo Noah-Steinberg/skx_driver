@@ -13,7 +13,7 @@ MODULE_LICENSE("GPL");
 
 #define PKT_LEN 64
 #define MAX_OUT_PACKETS 2
-#define DEV_NAME "Microsoft X-Box One S pad"
+#define DEV_NAME "Microsoft X-Box One Controller"
 #define SKX_PROTOCOL() \
   .match_flags = USB_DEVICE_ID_MATCH_VENDOR | USB_DEVICE_ID_MATCH_INT_INFO, \
   .idVendor = 0x045e, \
