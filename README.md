@@ -7,7 +7,7 @@ This project is a proof of concept of advanced rumble functionality for the Xbox
 
 This driver uses knowledge gained from the xpad project for the base driver, and improves its rumble functionality by supporting a greater number of force feedback effects.
 
-Originally created as a project for COMP3000: Operating Systems at Carleton University
+Originally created as a project for COMP3000: Operating Systems at Carleton University.
 
 References:
 
