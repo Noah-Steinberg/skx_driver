@@ -10,7 +10,8 @@ This driver uses knowledge gained from the xpad project for the base driver, and
 Originally created as a project for COMP3000: Operating Systems at Carleton University
 
 References:
-Ruhnke, I. (2015). Xbox/Xbox360 USB gamepad driver for userspace. Github. Retrieved
+
+1. Ruhnke, I. (2015). Xbox/Xbox360 USB gamepad driver for userspace. Github. Retrieved
 from: https://github.com/xboxdrv/xboxdrv
 
 2. Buchbinder, A., Cerquetti, D., Friedemann, M., Fritz, C., Hawkes, I., Kratochvil, J.,
