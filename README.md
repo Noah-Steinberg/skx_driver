@@ -3,7 +3,7 @@ skx_driver
 
 A driver for the Xbox One Controller, co-developed by Noah Steinberg and Jeremy Kielbiski.
 
-This project is a proof of concept of advanced rumble functionality for the Xbox One controller.
+This project is a proof of concept of advanced rumble functionality for the Xbox One controller on Ubuntu 16.04LTS.
 
 This driver uses knowledge gained from the xpad project for the base driver, and improves its rumble functionality by supporting a greater number of force feedback effects.
 
